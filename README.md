@@ -106,8 +106,18 @@ python plot_results.py
 | `--steps`        | acquisition steps (default 100)                |
 | `--epochs`       | training epochs per round (default 50)         |
 | `--mc-samples`   | MC-dropout passes when scoring (default 50)    |
+| `--mc-eval`      | use MC-dropout for test evaluation (paper-faithful, slower) |
 | `--cpu`          | force CPU even if CUDA is available            |
 | `--quick`        | tiny config for a fast smoke test              |
+
+## Training stability
+
+The model is **reset and retrained from scratch at every acquisition step** (as
+in the paper) to isolate the effect of the acquisition function. To avoid a
+single bad epoch collapsing the reported accuracy, training keeps the weights
+with the **best validation accuracy** rather than the final-epoch weights, and
+weight decay is applied only to the dense layers (capped at `weight_decay_max`).
+If you still see noisy curves, increase `--experiments` to average over more runs.
 
 ## Notes on runtime
 

@@ -28,6 +28,8 @@ def parse_args():
     p.add_argument("--mc-samples", type=int, default=50,
                    help="MC-dropout forward passes when scoring the pool")
     p.add_argument("--seed", type=int, default=1, help="base random seed")
+    p.add_argument("--mc-eval", action="store_true",
+                   help="use MC-dropout for test evaluation (paper-faithful, slower)")
     p.add_argument("--cpu", action="store_true", help="force CPU even if CUDA exists")
     p.add_argument("--quick", action="store_true",
                    help="tiny config for a fast smoke test")
@@ -42,6 +44,7 @@ def main():
     cfg.epochs = args.epochs
     cfg.mc_samples = args.mc_samples
     cfg.seed = args.seed
+    cfg.mc_eval = args.mc_eval
 
     if args.quick:  # fast settings just to verify the pipeline runs
         cfg.acquisition_steps = 3

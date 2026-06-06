@@ -36,7 +36,8 @@ class Config:
     epochs: int = 50                  # epochs per (re)training round
     batch_size: int = 128
     lr: float = 1e-3                  # Adam learning rate
-    weight_decay_base: float = 3.5    # actual decay = base / num_train_points
+    weight_decay_base: float = 3.5    # decay = base / num_train_points ...
+    weight_decay_max: float = 5e-3    # ... capped so small-N decay isn't extreme
     dropout_conv: float = 0.25
     dropout_dense: float = 0.5
     num_filters: int = 32
@@ -47,5 +48,6 @@ class Config:
     # ---- Experiment management ----
     experiments: int = 3              # repetitions to average over
     seed: int = 1
+    mc_eval: bool = False             # use MC-dropout for test evaluation (paper-faithful)
     results_dir: str = "results"
     data_dir: str = "data"

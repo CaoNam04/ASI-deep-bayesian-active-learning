@@ -31,13 +31,13 @@ def run_active_learning(cfg: Config, acquisition: str, seed: int, device, verbos
     test_acc_history = []
 
     for step in range(cfg.acquisition_steps + 1):
-        # 1. Train a fresh model on the current labelled data.
+        # 1. Train a fresh model on the current labelled data (best-val checkpoint).
         n_points = len(labelled)
         model, optimizer = build_model(cfg, n_points, device)
-        train(model, optimizer, labelled, cfg, device)
+        train(model, optimizer, labelled, val_ds, cfg, device)
 
         # 2. Evaluate on the fixed test set.
-        test_acc, _ = evaluate(model, test_ds, cfg, device)
+        test_acc, _ = evaluate(model, test_ds, cfg, device, mc=cfg.mc_eval)
         val_acc, _ = evaluate(model, val_ds, cfg, device)
         test_acc_history.append(test_acc)
         if verbose:
