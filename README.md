@@ -31,9 +31,19 @@ deep-bayesian-active-learning/
 ├── acquisition.py       # MC-dropout predictions + acquisition functions
 ├── engine.py            # train / evaluate routines
 ├── active_learning.py   # the active-learning loop
-├── main.py              # command-line entry point
+├── main.py              # command-line entry point (MNIST)
 ├── plot_results.py      # reproduce Figure 1
+├── report_table.py      # section 5.4: test-error table at 1000 labels
 ├── run_all.bat          # run every acquisition (Windows)
+├── isic/                # section 5.5: ISIC 2016 melanoma experiment
+│   ├── config.py        #   ISIC hyperparameters
+│   ├── model.py         #   Bayesian VGG16 (fine-tuned, dropout head)
+│   ├── data.py          #   ISIC loading, balanced splits, augmentation
+│   ├── acquisition.py   #   BALD + uniform (binary)
+│   ├── engine.py        #   train + AUC evaluation (MC dropout)
+│   ├── active_learning.py #  ISIC AL loop (reset to pre-trained each step)
+│   ├── main.py          #   ISIC entry point
+│   └── plot_results.py  #   reproduce Figure 5
 ├── requirements.txt
 └── README.md
 ```
@@ -109,6 +119,55 @@ python plot_results.py
 | `--mc-eval`      | use MC-dropout for test evaluation (paper-faithful, slower) |
 | `--cpu`          | force CPU even if CUDA is available            |
 | `--quick`        | tiny config for a fast smoke test              |
+
+## Reproducing the paper's experiments
+
+### Sections 5.1–5.3 (MNIST, acquisition comparison)
+
+```bat
+run_all.bat
+python plot_results.py
+```
+
+### Section 5.4 (comparison to semi-supervised learning)
+
+Same MNIST pipeline but with a large validation set (5000) and accuracy read off
+at 1000 labelled images, then printed as a Table-2-style error table:
+
+```bat
+python main.py --acquisition VAR_RATIOS --val-size 5000 --steps 98
+python main.py --acquisition BALD       --val-size 5000 --steps 98
+python main.py --acquisition MAX_ENTROPY --val-size 5000 --steps 98
+python main.py --acquisition RANDOM      --val-size 5000 --steps 98
+python report_table.py --labelled 1000
+```
+
+### Section 5.5 (ISIC 2016 melanoma diagnosis)
+
+Fine-tunes a Bayesian VGG16 and compares BALD vs uniform acquisition with the
+AUC metric on the imbalanced ISIC 2016 lesion dataset. Code lives in `isic/`.
+
+**Get the data.** Download the ISIC 2016 *Task 3 (classification)* training set
+from <https://challenge.isic-archive.com/data/> (900 dermoscopic images +
+ground-truth CSV with benign/malignant labels). Arrange it as:
+
+```
+isic_data/
+├── images/        # ISIC_0000000.jpg, ...
+└── labels.csv     # columns: image_id,label   (label = 0/1 or benign/malignant)
+```
+
+**Run:**
+
+```bat
+python -m isic.main --data-dir isic_data/images --csv isic_data/labels.csv
+python -m isic.plot_results
+```
+
+Useful flags: `--splits` (random test splits, default 2), `--reps` (repeats per
+split, default 3), `--steps` (acquisition steps, default 4), `--epochs`
+(fine-tuning epochs, default 100), `--freeze-features` (train only the head, much
+faster), `--cpu`.
 
 ## Training stability
 

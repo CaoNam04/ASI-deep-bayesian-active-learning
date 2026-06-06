@@ -8,8 +8,11 @@ env/
 
 # Data & results
 data/
+isic_data/
 results/*.npy
 results/*.png
+results_isic/*.npy
+results_isic/*.png
 
 # IDE / OS
 .idea/
