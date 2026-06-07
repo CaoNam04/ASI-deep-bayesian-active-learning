@@ -185,7 +185,3 @@ in the paper) to isolate the effect of the acquisition function. With 100 steps
 × 3 repetitions this is the slow part; an RTX GPU handles it comfortably, but you
 can reduce `--steps` or `--experiments` for quicker results. Expected outcome:
 `BALD` and `VAR_RATIOS` reach low test error with far fewer labels than `RANDOM`.
-
-## License
-
-MIT
