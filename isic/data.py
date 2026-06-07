@@ -1,9 +1,19 @@
 """ISIC 2016 data loading and the active-learning splits (section 5.5).
 
 Expected layout (override with --data-dir / --csv):
-    isic_data/images/ISIC_0000000.jpg, ...
-    isic_data/labels.csv   with columns: image_id,label
-        label is 0/1 or "benign"/"malignant".
+    isic_data/images/ISIC_0000000.jpg, ...     # 900 dermoscopic JPEG images
+    isic_data/labels.csv                        # classification ground truth
+
+IMPORTANT: the PNG files bundled with the ISIC 2016 Task-3B download are
+*segmentation masks* (single-channel 8-bit: 0 = background, 255 = lesion), NOT
+benign/malignant labels. They tell you the lesion's shape, not its diagnosis,
+so they cannot drive this classification task. The class labels live in a
+separate ground-truth CSV (image_id, benign/malignant) -- point --csv at it.
+
+CSV format (header optional):
+    ISIC_0000000,benign
+    ISIC_0000001,malignant
+labels may be benign/malignant or 0/1 (or 0.0/1.0).
 
 The 900-image set is unbalanced (727 benign, 173 malignant), so:
   - the test set is balanced (test_neg benign + test_pos malignant),
@@ -61,22 +71,44 @@ class ISICDataset(Dataset):
         return self.tf(img), self.labels[i]
 
 
+def _to_binary(raw) -> int:
+    """Map a label cell to 1 (malignant) or 0 (benign)."""
+    s = str(raw).strip().lower()
+    if s in ("malignant", "1", "1.0", "true", "yes"):
+        return 1
+    try:
+        return 1 if float(s) >= 0.5 else 0   # handles 0.0 / 1.0 and confidences
+    except ValueError:
+        return 0                              # benign / anything else
+
+
 def load_index(cfg: ISICConfig):
-    """Read the CSV and return arrays of image paths and binary labels."""
-    df = pd.read_csv(cfg.csv_path)
-    cols = {c.lower(): c for c in df.columns}
-    id_col = cols.get("image_id") or cols.get("image") or df.columns[0]
-    label_col = cols.get("label") or df.columns[1]
+    """Read the classification CSV and return arrays of image paths + binary labels.
+
+    Note: PNG segmentation masks are NOT labels (see module docstring). This
+    reader expects the benign/malignant ground-truth CSV. It tolerates a missing
+    header and either string or numeric labels.
+    """
+    if not os.path.exists(cfg.csv_path):
+        raise FileNotFoundError(
+            f"Classification labels CSV not found at '{cfg.csv_path}'.\n"
+            "The PNG files in the ISIC download are segmentation masks, not "
+            "labels. Download the ISIC 2016 Task-3 'Training Ground Truth' CSV "
+            "(image_id,benign/malignant) and point --csv at it.")
+
+    # ISIC's official CSV has no header; processed copies sometimes add one.
+    df = pd.read_csv(cfg.csv_path, header=None, dtype=str)
+    first_cell = str(df.iloc[0, 0]).strip().lower()
+    if first_cell in ("image", "image_id", "image_name", "id", "name"):
+        df = df.iloc[1:].reset_index(drop=True)   # drop the header row
 
     paths, labels = [], []
     for _, row in df.iterrows():
-        name = str(row[id_col])
+        name = str(row[0]).strip()
         if not name.lower().endswith((".jpg", ".jpeg", ".png")):
             name += ".jpg"
-        raw = str(row[label_col]).strip().lower()
-        y = 1 if raw in ("1", "1.0", "malignant") else 0
         paths.append(os.path.join(cfg.data_dir, name))
-        labels.append(y)
+        labels.append(_to_binary(row[1]))
     return np.array(paths), np.array(labels)
 
 

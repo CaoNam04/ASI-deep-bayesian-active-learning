@@ -148,14 +148,24 @@ Fine-tunes a Bayesian VGG16 and compares BALD vs uniform acquisition with the
 AUC metric on the imbalanced ISIC 2016 lesion dataset. Code lives in `isic/`.
 
 **Get the data.** Download the ISIC 2016 *Task 3 (classification)* training set
-from <https://challenge.isic-archive.com/data/> (900 dermoscopic images +
-ground-truth CSV with benign/malignant labels). Arrange it as:
+from <https://challenge.isic-archive.com/data/>: 900 dermoscopic JPEG images plus
+the **classification ground-truth CSV** (`image_id,benign/malignant`).
+
+> Note: the **PNG files** bundled with the Task-3B download are *segmentation
+> masks* (0 = background, 255 = lesion), **not** class labels. They are not used
+> by this experiment. The benign/malignant labels are the separate CSV file.
+
+Arrange it as:
 
 ```
 isic_data/
 ├── images/        # ISIC_0000000.jpg, ...
-└── labels.csv     # columns: image_id,label   (label = 0/1 or benign/malignant)
+├── masks/         # (optional) PNG segmentation masks -- NOT used
+└── labels.csv     # classification ground truth: image_id,benign/malignant
 ```
+
+The CSV may be headerless (the official ISIC format) and labels may be
+`benign`/`malignant` or `0`/`1`; the loader handles both.
 
 **Run:**
 
