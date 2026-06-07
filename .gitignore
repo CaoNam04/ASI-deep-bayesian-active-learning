@@ -6,13 +6,9 @@ __pycache__/
 venv/
 env/
 
-# Data & results
+# Data
 data/
 isic_data/
-results/*.npy
-results/*.png
-results_isic/*.npy
-results_isic/*.png
 
 # IDE / OS
 .idea/
