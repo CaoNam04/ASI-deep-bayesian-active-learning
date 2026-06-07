@@ -26,18 +26,22 @@ def main():
             auc = np.load(auc_path)            # (reps, steps+1)
             pos = np.load(pos_path)
             steps = np.arange(auc.shape[1])
-            se_auc = auc.std(0) / np.sqrt(auc.shape[0])
+            n = auc.shape[0]
+            se_auc = auc.std(0) / np.sqrt(n)
+            se_pos = pos.std(0) / np.sqrt(n)
 
             ax_a, ax_p = axes[split][0], axes[split][1]
             ax_a.plot(steps, auc.mean(0), color=color, label=acq)
             ax_a.fill_between(steps, auc.mean(0) - se_auc, auc.mean(0) + se_auc,
                               color=color, alpha=0.2)
             ax_p.plot(steps, pos.mean(0), color=color, label=acq)
+            ax_p.fill_between(steps, pos.mean(0) - se_pos, pos.mean(0) + se_pos,
+                              color=color, alpha=0.2)
 
-            ax_a.set_title(f"AUC (split {split})")
+            ax_a.set_title(f"AUC (split {split+1})")
             ax_a.set_xlabel("Acquisition step"); ax_a.set_ylabel("AUC")
             ax_a.legend(); ax_a.grid(alpha=0.3)
-            ax_p.set_title(f"# positives acquired (split {split})")
+            ax_p.set_title(f"# positives acquired (split {split+1})")
             ax_p.set_xlabel("Acquisition step")
             ax_p.set_ylabel("# positive examples")
             ax_p.legend(); ax_p.grid(alpha=0.3)

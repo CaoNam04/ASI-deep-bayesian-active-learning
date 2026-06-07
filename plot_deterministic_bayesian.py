@@ -1,14 +1,7 @@
 """Reproduce Figure 2: Bayesian (red) vs deterministic (blue) CNN.
 
 Compares the two model types for BALD, Variation Ratios and Max Entropy. Run
-each acquisition function in both modes first, e.g.:
-
-    python main.py --acquisition BALD
-    python main.py --acquisition BALD --deterministic
-    ... (same for VAR_RATIOS and MAX_ENTROPY)
-
-then:
-    python plot_figure2.py
+each acquisition function in both modes first.
 """
 import os
 

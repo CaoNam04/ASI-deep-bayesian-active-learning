@@ -33,10 +33,7 @@ deep-bayesian-active-learning/
 ├── active_learning.py   # the active-learning loop
 ├── main.py              # command-line entry point (MNIST)
 ├── plot_results.py      # reproduce Figure 1
-├── plot_figure2.py      # reproduce Figure 2 (Bayesian vs deterministic)
-├── report_table.py      # section 5.4: test-error table at 1000 labels
-├── run_all.bat          # run every acquisition (Windows)
-├── run_figure2.bat      # run Bayesian vs deterministic comparison (Windows)
+├── plot_deterministic_bayesian.py      # reproduce Figure 2 (Bayesian vs deterministic)
 ├── isic/                # section 5.5: ISIC 2016 melanoma experiment
 │   ├── config.py        #   ISIC hyperparameters
 │   ├── model.py         #   Bayesian VGG16 (fine-tuned, dropout head)
@@ -138,17 +135,13 @@ CNN** (single-pass acquisition, dropout used only for regularisation) for BALD,
 Variation Ratios and Max Entropy. The deterministic model captures only
 aleatoric uncertainty, so BALD degenerates to random selection.
 
-```bat
-run_figure2.bat
-```
-
 or manually, then plot:
 
 ```bat
 python main.py --acquisition BALD
 python main.py --acquisition BALD --deterministic
 :: ... repeat for VAR_RATIOS and MAX_ENTROPY ...
-python plot_figure2.py
+python plot_deterministic_bayesian.py
 ```
 
 ### Section 5.4 (comparison to semi-supervised learning)
@@ -161,7 +154,6 @@ python main.py --acquisition VAR_RATIOS --val-size 5000 --steps 98
 python main.py --acquisition BALD       --val-size 5000 --steps 98
 python main.py --acquisition MAX_ENTROPY --val-size 5000 --steps 98
 python main.py --acquisition RANDOM      --val-size 5000 --steps 98
-python report_table.py --labelled 1000
 ```
 
 ### Section 5.5 (ISIC 2016 melanoma diagnosis)
@@ -217,7 +209,3 @@ in the paper) to isolate the effect of the acquisition function. With 100 steps
 × 3 repetitions this is the slow part; an RTX GPU handles it comfortably, but you
 can reduce `--steps` or `--experiments` for quicker results. Expected outcome:
 `BALD` and `VAR_RATIOS` reach low test error with far fewer labels than `RANDOM`.
-
-## License
-
-MIT

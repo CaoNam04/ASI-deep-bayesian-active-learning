@@ -44,33 +44,49 @@ def _base_transform(size):
     ])
 
 
-def _flip_transform(size, hflip, vflip):
-    """Deterministic flip transform (p=1.0), matching the paper's augmentation:
-    positive lesions are flipped vertically and horizontally."""
-    ops = [transforms.Resize((size, size))]
-    if hflip:
-        ops.append(transforms.RandomHorizontalFlip(p=1.0))
-    if vflip:
-        ops.append(transforms.RandomVerticalFlip(p=1.0))
-    ops += [transforms.ToTensor(), transforms.Normalize(_MEAN, _STD)]
-    return transforms.Compose(ops)
+# In-memory cache: each image is decoded + resized + normalised only ONCE and
+# reused across epochs, MC-dropout passes and acquisition steps. ~900 images at
+# 3x224x224 float32 is ~0.5 GB of RAM. This removes the per-epoch JPEG-decode
+# bottleneck (the main reason an epoch was taking minutes).
+_CACHE = {}
+
+
+def _load_cached(path, size):
+    key = (path, size)
+    t = _CACHE.get(key)
+    if t is None:
+        img = Image.open(path).convert("RGB")
+        t = _base_transform(size)(img)        # (3, size, size), normalised
+        _CACHE[key] = t
+    return t
 
 
 class ISICDataset(Dataset):
-    """Lesion images addressed by index. Pass an explicit `transform` for the
-    deterministic flipped copies; otherwise the plain resize+normalise is used."""
+    """Cached lesion images, with optional deterministic flips.
 
-    def __init__(self, paths, labels, size, transform=None):
+    hflip / vflip apply a fixed flip (used for augmenting positive examples).
+    Flips are cheap tensor ops on the cached tensor, so no extra decoding.
+    """
+
+    def __init__(self, paths, labels, size, hflip=False, vflip=False):
         self.paths = list(paths)
         self.labels = list(labels)
-        self.tf = transform if transform is not None else _base_transform(size)
+        self.size = size
+        self.hflip = hflip
+        self.vflip = vflip
 
     def __len__(self):
         return len(self.paths)
 
     def __getitem__(self, i):
-        img = Image.open(self.paths[i]).convert("RGB")
-        return self.tf(img), self.labels[i]
+        t = _load_cached(self.paths[i], self.size)
+        if self.hflip or self.vflip:
+            t = t.clone()
+            if self.hflip:
+                t = torch.flip(t, dims=[2])   # horizontal (width)
+            if self.vflip:
+                t = torch.flip(t, dims=[1])   # vertical (height)
+        return t, self.labels[i]
 
 
 def _to_binary(raw) -> int:
@@ -162,8 +178,7 @@ def make_train_dataset(cfg: ISICConfig, paths, labels, labelled_idx):
         # Up to three deterministic flips: h, v, then both.
         flips = [(True, False), (False, True), (True, True)][:max(cfg.pos_augment, 0)]
         for hflip, vflip in flips:
-            tf = _flip_transform(cfg.img_size, hflip, vflip)
             datasets.append(ISICDataset(paths[pos_idx], labels[pos_idx],
-                                        cfg.img_size, transform=tf))
+                                        cfg.img_size, hflip=hflip, vflip=vflip))
 
     return ConcatDataset(datasets) if len(datasets) > 1 else datasets[0]
