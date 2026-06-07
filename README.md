@@ -144,18 +144,6 @@ python main.py --acquisition BALD --deterministic
 python plot_deterministic_bayesian.py
 ```
 
-### Section 5.4 (comparison to semi-supervised learning)
-
-Same MNIST pipeline but with a large validation set (5000) and accuracy read off
-at 1000 labelled images, then printed as a Table-2-style error table:
-
-```bat
-python main.py --acquisition VAR_RATIOS --val-size 5000 --steps 98
-python main.py --acquisition BALD       --val-size 5000 --steps 98
-python main.py --acquisition MAX_ENTROPY --val-size 5000 --steps 98
-python main.py --acquisition RANDOM      --val-size 5000 --steps 98
-```
-
 ### Section 5.5 (ISIC 2016 melanoma diagnosis)
 
 Fine-tunes a Bayesian VGG16 and compares BALD vs uniform acquisition with the
@@ -178,8 +166,8 @@ isic_data/
 └── labels.csv     # classification ground truth: image_id,benign/malignant
 ```
 
-The CSV may be headerless (the official ISIC format) and labels may be
-`benign`/`malignant` or `0`/`1`; the loader handles both.
+The CSV may be headerless (the official ISIC format) and labels will be
+`benign`/`malignant`; the loader handles both.
 
 **Run:**
 
