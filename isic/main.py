@@ -24,6 +24,12 @@ def parse_args():
     p.add_argument("--reps", type=int, default=3)
     p.add_argument("--steps", type=int, default=4)
     p.add_argument("--epochs", type=int, default=100)
+    p.add_argument("--batch-size", type=int, default=8)
+    p.add_argument("--lr", type=float, default=1e-4)
+    p.add_argument("--mc-samples", type=int, default=20,
+                   help="MC-dropout passes for AUC evaluation and BALD scoring")
+    p.add_argument("--pos-augment", type=int, default=2,
+                   help="deterministic flipped copies per positive (0..3)")
     p.add_argument("--freeze-features", action="store_true",
                    help="train only the classifier head (faster)")
     p.add_argument("--cpu", action="store_true")
@@ -41,6 +47,10 @@ def main():
     cfg.repetitions = args.reps
     cfg.max_steps = args.steps
     cfg.epochs = args.epochs
+    cfg.batch_size = args.batch_size
+    cfg.lr = args.lr
+    cfg.mc_samples = args.mc_samples
+    cfg.pos_augment = args.pos_augment
     cfg.freeze_features = args.freeze_features
 
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu

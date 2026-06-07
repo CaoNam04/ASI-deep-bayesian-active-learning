@@ -44,24 +44,26 @@ def _base_transform(size):
     ])
 
 
-def _aug_transform(size):
-    # Flip-based augmentation used by the paper for positive examples.
-    return transforms.Compose([
-        transforms.Resize((size, size)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomVerticalFlip(p=0.5),
-        transforms.ToTensor(),
-        transforms.Normalize(_MEAN, _STD),
-    ])
+def _flip_transform(size, hflip, vflip):
+    """Deterministic flip transform (p=1.0), matching the paper's augmentation:
+    positive lesions are flipped vertically and horizontally."""
+    ops = [transforms.Resize((size, size))]
+    if hflip:
+        ops.append(transforms.RandomHorizontalFlip(p=1.0))
+    if vflip:
+        ops.append(transforms.RandomVerticalFlip(p=1.0))
+    ops += [transforms.ToTensor(), transforms.Normalize(_MEAN, _STD)]
+    return transforms.Compose(ops)
 
 
 class ISICDataset(Dataset):
-    """Lesion images addressed by index, with optional augmentation."""
+    """Lesion images addressed by index. Pass an explicit `transform` for the
+    deterministic flipped copies; otherwise the plain resize+normalise is used."""
 
-    def __init__(self, paths, labels, size, augment=False):
+    def __init__(self, paths, labels, size, transform=None):
         self.paths = list(paths)
         self.labels = list(labels)
-        self.tf = _aug_transform(size) if augment else _base_transform(size)
+        self.tf = transform if transform is not None else _base_transform(size)
 
     def __len__(self):
         return len(self.paths)
@@ -145,18 +147,23 @@ def make_split(cfg: ISICConfig, split_seed: int, rep_seed: int):
 
 
 def make_train_dataset(cfg: ISICConfig, paths, labels, labelled_idx):
-    """Build a training dataset, oversampling positives with flip augmentation."""
-    idx = list(labelled_idx)
-    # Add augmented copies of each positive example.
-    aug_idx = [i for i in idx if labels[i] == 1] * cfg.pos_augment
-    all_idx = np.array(idx + aug_idx)
+    """Build the training dataset following the paper's augmentation: every
+    positive (malignant) example is added again as deterministic flipped copies
+    (horizontal / vertical / both), to counter the class imbalance. Originals of
+    both classes are kept un-augmented.
+    """
+    from torch.utils.data import ConcatDataset
 
-    # Non-augmented for originals + augmented transform for the extra positives.
-    base = ISICDataset(paths[np.array(idx)], labels[np.array(idx)], cfg.img_size,
-                       augment=False)
-    if aug_idx:
-        aug = ISICDataset(paths[np.array(aug_idx)], labels[np.array(aug_idx)],
-                          cfg.img_size, augment=True)
-        from torch.utils.data import ConcatDataset
-        return ConcatDataset([base, aug])
-    return base
+    idx = np.array(list(labelled_idx))
+    datasets = [ISICDataset(paths[idx], labels[idx], cfg.img_size)]  # originals
+
+    pos_idx = idx[labels[idx] == 1]
+    if len(pos_idx) > 0:
+        # Up to three deterministic flips: h, v, then both.
+        flips = [(True, False), (False, True), (True, True)][:max(cfg.pos_augment, 0)]
+        for hflip, vflip in flips:
+            tf = _flip_transform(cfg.img_size, hflip, vflip)
+            datasets.append(ISICDataset(paths[pos_idx], labels[pos_idx],
+                                        cfg.img_size, transform=tf))
+
+    return ConcatDataset(datasets) if len(datasets) > 1 else datasets[0]
