@@ -1,8 +1,3 @@
-"""Central configuration for the Deep Bayesian Active Learning experiments.
-
-All defaults follow the MNIST setup described in Gal, Islam & Ghahramani (2017),
-"Deep Bayesian Active Learning with Image Data" (https://arxiv.org/abs/1703.02910).
-"""
 from dataclasses import dataclass, field
 from typing import List
 
