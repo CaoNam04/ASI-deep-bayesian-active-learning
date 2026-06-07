@@ -52,7 +52,8 @@ def run_active_learning(cfg: Config, acquisition: str, seed: int, device, verbos
                          replace=False)
         sub_x, sub_y = pool_x[sub], pool_y[sub]
         chosen = select_queries(acquisition, model, sub_x,
-                                cfg.queries_per_step, cfg.mc_samples, device, rng)
+                                cfg.queries_per_step, cfg.mc_samples, device, rng,
+                                deterministic=cfg.deterministic)
 
         # 4. Add chosen points to the labelled set, remove them from the pool.
         new_x, new_y = sub_x[chosen], sub_y[chosen]

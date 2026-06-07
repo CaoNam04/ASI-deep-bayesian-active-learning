@@ -49,5 +49,6 @@ class Config:
     experiments: int = 3              # repetitions to average over
     seed: int = 1
     mc_eval: bool = False             # use MC-dropout for test evaluation (paper-faithful)
+    deterministic: bool = False       # deterministic CNN for acquisition (Figure 2)
     results_dir: str = "results"
     data_dir: str = "data"

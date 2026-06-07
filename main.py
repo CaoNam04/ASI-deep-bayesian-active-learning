@@ -32,6 +32,8 @@ def parse_args():
     p.add_argument("--seed", type=int, default=1, help="base random seed")
     p.add_argument("--mc-eval", action="store_true",
                    help="use MC-dropout for test evaluation (paper-faithful, slower)")
+    p.add_argument("--deterministic", action="store_true",
+                   help="deterministic CNN acquisition (no MC dropout) for Figure 2")
     p.add_argument("--cpu", action="store_true", help="force CPU even if CUDA exists")
     p.add_argument("--quick", action="store_true",
                    help="tiny config for a fast smoke test")
@@ -47,6 +49,7 @@ def main():
     cfg.mc_samples = args.mc_samples
     cfg.seed = args.seed
     cfg.mc_eval = args.mc_eval
+    cfg.deterministic = args.deterministic
     if args.val_size is not None:
         cfg.val_size = args.val_size
 
@@ -76,7 +79,9 @@ def main():
         all_runs.append(acc)
 
     all_runs = np.stack(all_runs)  # (experiments, steps+1)
-    out = os.path.join(cfg.results_dir, f"test_acc_{args.acquisition}.npy")
+    suffix = "_deterministic" if cfg.deterministic else ""
+    out = os.path.join(cfg.results_dir,
+                       f"test_acc_{args.acquisition}{suffix}.npy")
     np.save(out, all_runs)
     print(f"\nSaved results to {out}")
     print(f"Final mean test accuracy: {all_runs[:, -1].mean():.2f}%")

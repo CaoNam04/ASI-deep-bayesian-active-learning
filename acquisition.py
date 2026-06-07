@@ -30,6 +30,22 @@ def mc_dropout_predictions(model, x, T, device, batch_size=256):
     return torch.stack(samples, dim=1).numpy()  # (N, T, C)
 
 
+@torch.no_grad()
+def deterministic_predictions(model, x, device, batch_size=256):
+    """Single deterministic forward pass (dropout OFF); returns (N, 1, C).
+
+    Models a point-mass posterior q*(w) = delta(w - theta): captures only
+    aleatoric uncertainty, not epistemic. Used for the deterministic CNN.
+    """
+    model.eval()  # dropout off
+    loader = DataLoader(TensorDataset(x), batch_size=batch_size, shuffle=False)
+    probs = []
+    for (batch,) in loader:
+        logits = model(batch.to(device))
+        probs.append(torch.softmax(logits, dim=1).cpu())
+    return torch.cat(probs, dim=0).unsqueeze(1).numpy()  # (N, 1, C)
+
+
 # ---- Individual acquisition scores ----
 
 def max_entropy(probs):
@@ -48,14 +64,14 @@ def bald(probs):
 
 
 def variation_ratios(probs):
-    """1 - fraction of MC passes that agree with the modal class."""
-    preds = probs.argmax(axis=2)                      # (N, T) hard labels
-    N, T = preds.shape
-    scores = np.empty(N)
-    for i in range(N):
-        counts = np.bincount(preds[i], minlength=probs.shape[2])
-        scores[i] = 1.0 - counts.max() / T
-    return scores
+    """1 - max over classes of the MEAN predicted probability.
+
+    This is the paper's definition (VR = 1 - max_y p(y|x)). Using the mean
+    predictive probability (rather than hard-label vote counts) makes it well
+    defined for a single deterministic pass too, which we need for Figure 2.
+    """
+    mean_p = probs.mean(axis=1)                       # (N, C)
+    return 1.0 - mean_p.max(axis=1)
 
 
 def mean_std(probs):
@@ -74,17 +90,25 @@ _FUNCS = {
 }
 
 
-def score_pool(name, model, pool_x, T, device):
+def score_pool(name, model, pool_x, T, device, deterministic=False):
     """Return acquisition scores for every point in `pool_x`."""
-    probs = mc_dropout_predictions(model, pool_x, T, device)
+    if deterministic:
+        probs = deterministic_predictions(model, pool_x, device)  # (N, 1, C)
+    else:
+        probs = mc_dropout_predictions(model, pool_x, T, device)  # (N, T, C)
     return _FUNCS[name](probs)
 
 
-def select_queries(name, model, pool_x, n_queries, T, device, rng):
+def select_queries(name, model, pool_x, n_queries, T, device, rng,
+                   deterministic=False):
     """Pick indices of the top-n points to label (random for the baseline)."""
     if name == "RANDOM":
         return rng.choice(len(pool_x), size=n_queries, replace=False)
-    scores = score_pool(name, model, pool_x, T, device)
-    # Top-n indices, highest score first. .copy() avoids a negative stride
-    # (PyTorch can't index with negative-stride numpy arrays).
+    scores = score_pool(name, model, pool_x, T, device, deterministic)
+    # Tiny jitter breaks ties randomly. For acquisition functions that go
+    # degenerate on a deterministic model (BALD and Mean STD become all-zero),
+    # this makes selection effectively random -- the expected behaviour, since a
+    # deterministic CNN has no epistemic uncertainty to exploit.
+    scores = scores + rng.normal(0, 1e-9, size=scores.shape)
+    # Top-n indices, highest score first. .copy() avoids a negative stride.
     return scores.argsort()[-n_queries:][::-1].copy()
