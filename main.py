@@ -29,6 +29,9 @@ def parse_args():
                    help="MC-dropout forward passes when scoring the pool")
     p.add_argument("--val-size", type=int, default=None,
                    help="validation set size (use 5000 to reproduce section 5.4)")
+    p.add_argument("--pool-subset", type=int, default=None,
+                   help="pool points scored per step (raise toward the full pool, "
+                        "e.g. 20000, to widen the Bayesian-vs-deterministic gap)")
     p.add_argument("--seed", type=int, default=1, help="base random seed")
     p.add_argument("--mc-eval", action="store_true",
                    help="use MC-dropout for test evaluation (paper-faithful, slower)")
@@ -52,6 +55,8 @@ def main():
     cfg.deterministic = args.deterministic
     if args.val_size is not None:
         cfg.val_size = args.val_size
+    if args.pool_subset is not None:
+        cfg.pool_subset = args.pool_subset
 
     if args.quick:  # fast settings just to verify the pipeline runs
         cfg.acquisition_steps = 3
