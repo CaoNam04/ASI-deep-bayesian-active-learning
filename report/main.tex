@@ -1,0 +1,323 @@
+%=========================================================================
+%  Deep Bayesian Active Learning with Image Data -- reproduction report
+%  Compiles on Overleaf with pdfLaTeX out of the box (figures optional).
+%  To add your plots: drop the PNGs into the figures/ folder using the
+%  filenames referenced below (they match the repo's plotting scripts).
+%=========================================================================
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+
+\graphicspath{{figures/}}
+
+% --- Placeholder helper: show the figure if present, else a grey box. ---
+% (Filenames are only used as paths, never typeset, so underscores are safe.)
+\newcommand{\figorbox}[3]{%
+  \IfFileExists{figures/#1}%
+    {\includegraphics[width=#2]{#1}}%
+    {\fcolorbox{gray}{gray!10}{\parbox[c][3.2cm][c]{#2}{\centering\ttfamily
+      \small [ figure placeholder ]\\[6pt] \footnotesize generate with:\\[2pt] #3}}}%
+}
+
+% --- Minimal Python listing style. ---
+\definecolor{codegray}{gray}{0.95}
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codegray},
+  keywordstyle=\color{blue!60!black},
+  commentstyle=\color{green!40!black},
+  stringstyle=\color{red!60!black},
+  language=Python, breaklines=true, frame=single, framesep=4pt,
+  numbers=left, numberstyle=\tiny\color{gray}, showstringspaces=false,
+}
+
+%=========================================================================
+\title{\textbf{Deep Bayesian Active Learning with Image Data}\\[4pt]
+       \large A Reproduction and Implementation Study}
+\author{Your Name \\ \small Course: ASI \quad\textbar\quad
+        \href{https://github.com/CaoNam04/ASI-deep-bayesian-active-learning}%
+        {github.com/CaoNam04/ASI-deep-bayesian-active-learning}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% TODO: 4--6 sentence summary of what you did and what you found.
+We reproduce the active-learning framework of Gal, Islam and Ghahramani
+\cite{gal2017deepbal}, which combines Bayesian convolutional neural networks
+with uncertainty-based acquisition functions to label image data efficiently.
+We re-implement the method from scratch in PyTorch, evaluate five acquisition
+functions on MNIST, study the role of model uncertainty by comparing a Bayesian
+CNN to a deterministic one, compare against semi-supervised baselines, and apply
+the method to melanoma diagnosis on the ISIC~2016 dataset. % TODO: headline result.
+\end{abstract}
+
+%-------------------------------------------------------------------------
+\section{Introduction}
+\label{sec:intro}
+% TODO: motivate the problem in your own words.
+Labelling data is often the costliest step in deploying a machine-learning
+system, especially in domains such as medical imaging where labels require
+expert time. \emph{Active learning} (AL) reduces this cost by letting the model
+choose which unlabelled points are most worth labelling. Classical AL struggles
+with high-dimensional image data and with models that do not express
+uncertainty. The paper we reproduce addresses both issues by using a Bayesian
+CNN whose predictive uncertainty drives the acquisition of new labels.
+
+\paragraph{Contributions of this report.}
+\begin{itemize}
+  \item A clean, from-scratch PyTorch re-implementation of the method
+        (Section~\ref{sec:method}--\ref{sec:impl}).
+  \item Reproduction of the MNIST acquisition-function comparison
+        (Section~\ref{sec:mnist}) and the Bayesian-vs-deterministic study
+        (Section~\ref{sec:uncertainty}).
+  \item A comparison to semi-supervised baselines (Section~\ref{sec:semisup})
+        and an application to ISIC~2016 melanoma diagnosis
+        (Section~\ref{sec:isic}).
+  \item A discussion of implementation choices and differences from the original
+        results (Section~\ref{sec:discussion}).
+\end{itemize}
+
+%-------------------------------------------------------------------------
+\section{Background and Method}
+\label{sec:method}
+
+\subsection{The active-learning loop}
+Given a small labelled set $\mathcal{D}_{\text{train}}$, a large unlabelled pool
+$\mathcal{D}_{\text{pool}}$, and a model $\mathcal{M}$, an \emph{acquisition
+function} $a(x,\mathcal{M})$ scores each pool point. At every step we select
+\begin{equation}
+  x^\star = \arg\max_{x \in \mathcal{D}_{\text{pool}}} a(x,\mathcal{M}),
+\end{equation}
+query its label from an oracle, add it to $\mathcal{D}_{\text{train}}$, and
+retrain. The loop repeats, growing the labelled set over time.
+
+\subsection{Bayesian CNN via MC dropout}
+A Bayesian CNN places a distribution over weights $\omega$. Exact inference is
+intractable, so we approximate the posterior $p(\omega\mid\mathcal{D})$ with a
+dropout distribution $q^\star_\theta(\omega)$ and use \emph{MC dropout}: keeping
+dropout active at test time and averaging $T$ stochastic forward passes
+\cite{gal2016dropout},
+\begin{equation}
+  p(y=c\mid x,\mathcal{D}) \approx
+  \frac{1}{T}\sum_{t=1}^{T} p(y=c\mid x,\hat{\omega}_t),
+  \qquad \hat{\omega}_t \sim q^\star_\theta(\omega).
+  \label{eq:mcdropout}
+\end{equation}
+A \emph{deterministic} CNN instead sets $q^\star_\theta(\omega)=\delta(\omega-\theta)$
+(a point mass): it captures aleatoric (data) uncertainty but not epistemic
+(model) uncertainty.
+
+\subsection{Acquisition functions}
+\label{sec:acq}
+Let $\hat{p}^t_c$ be the probability of class $c$ on the $t$-th MC pass.
+
+\paragraph{Max Entropy \cite{shannon1948}.}
+\begin{equation}
+  \mathbb{H}[y\mid x,\mathcal{D}] = -\sum_c p(y=c\mid x,\mathcal{D})\,
+  \log p(y=c\mid x,\mathcal{D}).
+\end{equation}
+
+\paragraph{BALD \cite{houlsby2011bald}.}
+Mutual information between prediction and weights, i.e.\ points on which the
+sampled models \emph{disagree}:
+\begin{align}
+  \mathbb{I}[y,\omega\mid x,\mathcal{D}]
+  &= \mathbb{H}[y\mid x,\mathcal{D}]
+   - \mathbb{E}_{p(\omega\mid\mathcal{D})}\!\big[\mathbb{H}[y\mid x,\omega]\big]\\
+  &\approx -\sum_c\Big(\tfrac{1}{T}\textstyle\sum_t \hat{p}^t_c\Big)
+            \log\Big(\tfrac{1}{T}\textstyle\sum_t \hat{p}^t_c\Big)
+          + \tfrac{1}{T}\sum_{c,t}\hat{p}^t_c\log\hat{p}^t_c .
+  \label{eq:bald}
+\end{align}
+
+\paragraph{Variation Ratios \cite{freeman1965}.}
+\begin{equation}
+  \text{variation-ratio}[x] = 1 - \max_y p(y\mid x,\mathcal{D}).
+\end{equation}
+
+\paragraph{Mean STD.}
+\begin{equation}
+  \sigma_c = \sqrt{\mathbb{E}_q[p(y=c\mid x,\omega)^2]
+                  - \mathbb{E}_q[p(y=c\mid x,\omega)]^2}, \qquad
+  \sigma(x) = \frac{1}{C}\sum_c \sigma_c .
+\end{equation}
+
+\paragraph{Random.} Uniform selection from the pool (baseline).
+
+%-------------------------------------------------------------------------
+\section{Implementation}
+\label{sec:impl}
+
+\subsection{Model architecture}
+Following the paper, the MNIST model is
+\texttt{conv--relu--conv--relu--maxpool--dropout--dense--relu--dropout--dense},
+with $32$ convolution kernels ($4\!\times\!4$), $2\!\times\!2$ pooling, a
+$128$-unit dense layer, and dropout probabilities $0.25$ and $0.5$. For ISIC we
+fine-tune VGG16 \cite{simonyan2015vgg} pre-trained on ImageNet, replacing the
+$1000$-way head with a $2$-way (benign/malignant) head and keeping the two
+$0.5$ dropout layers for MC dropout.
+
+\subsection{Training and acquisition details}
+% TODO: adjust if you changed any hyperparameters.
+Each acquisition step trains a freshly initialised model to convergence and
+keeps the weights with the best validation accuracy; the model is reset every
+step to isolate the effect of the acquisition function. On MNIST we start from
+$20$ balanced labelled points, acquire $10$ points per step using $T$ MC
+samples, and evaluate on the standard $10$k test set.
+
+\subsection{Code structure}
+The implementation is split into modules; the core acquisition functions read as
+follows (abridged):
+\begin{lstlisting}
+def bald(probs):  # probs: (N, T, C)
+    mean_p = probs.mean(axis=1)
+    entropy_of_mean = -(mean_p * np.log(mean_p + EPS)).sum(axis=1)
+    entropy_per_pass = -(probs * np.log(probs + EPS)).sum(axis=2)
+    return entropy_of_mean - entropy_per_pass.mean(axis=1)
+\end{lstlisting}
+
+%-------------------------------------------------------------------------
+\section{Experiments and Results}
+\label{sec:results}
+
+\subsection{MNIST: comparison of acquisition functions}
+\label{sec:mnist}
+% TODO: describe what you observe in your run.
+\begin{figure}[t]
+  \centering
+  \figorbox{accuracy_comparison.png}{0.8\linewidth}%
+           {python plot\_results.py}
+  \caption{MNIST test accuracy vs.\ number of acquired images, averaged over
+           repetitions (shaded: std). \emph{TODO: comment on which functions
+           dominate.}}
+  \label{fig:mnist}
+\end{figure}
+
+\begin{table}[t]
+  \centering
+  \caption{Number of acquired images needed to reach a given test error.
+           \emph{TODO: fill in from your runs.}}
+  \label{tab:acq-steps}
+  \begin{tabular}{lccccc}
+    \toprule
+    \% error & BALD & Var Ratios & Max Ent & Mean STD & Random\\
+    \midrule
+    10\% & --- & --- & --- & --- & ---\\
+    5\%  & --- & --- & --- & --- & ---\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Importance of model uncertainty}
+\label{sec:uncertainty}
+% TODO: comment on the gap between red and blue.
+\begin{figure}[t]
+  \centering
+  \figorbox{figure2_bayesian_vs_deterministic.png}{\linewidth}%
+           {python plot\_figure2.py}
+  \caption{Bayesian CNN (red) vs.\ deterministic CNN (blue) for BALD, Variation
+           Ratios and Max Entropy. The deterministic model lacks epistemic
+           uncertainty, so BALD degenerates toward random selection.}
+  \label{fig:figure2}
+\end{figure}
+
+\subsection{Comparison to semi-supervised learning}
+\label{sec:semisup}
+\begin{table}[t]
+  \centering
+  \caption{Test error on MNIST with $1000$ labelled images. Semi-supervised
+           methods additionally use $\sim$49k--59k unlabelled images; our active
+           learner uses only the $1000$ acquired labels. \emph{TODO: fill in your
+           active-learning errors via} \texttt{report\_table.py}.}
+  \label{tab:semisup}
+  \begin{tabular}{lc}
+    \toprule
+    Method & Test error\\
+    \midrule
+    \multicolumn{2}{l}{\emph{Semi-supervised (from \cite{gal2017deepbal})}}\\
+    DGN \cite{kingma2014dgn}                 & 2.40\%\\
+    Ladder Network ($\Gamma$-model)          & 1.53\%\\
+    Ladder Network (full)                    & 0.84\%\\
+    \midrule
+    \multicolumn{2}{l}{\emph{Active learning (this work)}}\\
+    Random       & ---\\
+    BALD         & ---\\
+    Max Entropy  & ---\\
+    Var Ratios   & ---\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{ISIC 2016 melanoma diagnosis}
+\label{sec:isic}
+% TODO: describe AUC behaviour and positive-acquisition behaviour.
+\begin{figure}[t]
+  \centering
+  \figorbox{isic_figure5.png}{\linewidth}%
+           {python -m isic.plot\_results}
+  \caption{ISIC~2016: test AUC (left) and number of acquired positive
+           (malignant) examples (right) for BALD vs.\ uniform acquisition, on
+           two random test splits. \emph{TODO: comment on BALD acquiring more
+           positives and reaching higher AUC.}}
+  \label{fig:isic}
+\end{figure}
+
+%-------------------------------------------------------------------------
+\section{Discussion}
+\label{sec:discussion}
+% TODO: discuss differences from the paper and design choices.
+\begin{itemize}
+  \item \textbf{Training stability.} Reporting the best-validation checkpoint
+        (rather than the final epoch) removes sharp accuracy dips caused by
+        retraining from scratch each step.
+  \item \textbf{Variation Ratios.} We use the soft definition
+        $1-\max_c p(y=c\mid x)$, which matches the paper's formula and is also
+        well defined for a single deterministic pass.
+  \item \textbf{Differences from the paper.} % TODO: e.g. accuracy slightly
+        higher in the mid-curve; Mean STD variance with few repetitions, etc.
+\end{itemize}
+
+%-------------------------------------------------------------------------
+\section{Conclusion}
+\label{sec:conclusion}
+% TODO: 3--4 sentences.
+We re-implemented and reproduced the main results of \cite{gal2017deepbal}.
+Uncertainty-aware acquisition (BALD, Variation Ratios, Max Entropy) substantially
+reduces the number of labels needed compared to random sampling, and the
+epistemic uncertainty captured by a Bayesian CNN is essential to this gain.
+
+%-------------------------------------------------------------------------
+\begin{thebibliography}{9}
+\bibitem{gal2017deepbal} Y.~Gal, R.~Islam, Z.~Ghahramani.
+  \emph{Deep Bayesian Active Learning with Image Data}. ICML, 2017.
+\bibitem{gal2016dropout} Y.~Gal, Z.~Ghahramani.
+  \emph{Dropout as a Bayesian Approximation}. ICML, 2016.
+\bibitem{houlsby2011bald} N.~Houlsby, F.~Husz\'ar, Z.~Ghahramani, M.~Lengyel.
+  \emph{Bayesian Active Learning for Classification and Preference Learning}.
+  arXiv:1112.5745, 2011.
+\bibitem{shannon1948} C.~E.~Shannon.
+  \emph{A Mathematical Theory of Communication}. Bell System Tech.\ J., 1948.
+\bibitem{freeman1965} L.~G.~Freeman. \emph{Elementary Applied Statistics}. 1965.
+\bibitem{simonyan2015vgg} K.~Simonyan, A.~Zisserman.
+  \emph{Very Deep Convolutional Networks for Large-Scale Image Recognition}.
+  ICLR, 2015.
+\bibitem{kingma2014dgn} D.~P.~Kingma et al.
+  \emph{Semi-supervised Learning with Deep Generative Models}. NIPS, 2014.
+\bibitem{gutman2016isic} D.~Gutman et al.
+  \emph{Skin Lesion Analysis toward Melanoma Detection (ISBI 2016 / ISIC)}.
+  arXiv:1605.01397, 2016.
+\end{thebibliography}
+
+\end{document}

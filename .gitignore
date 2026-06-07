@@ -19,3 +19,10 @@ results_isic/*.png
 .vscode/
 .DS_Store
 *.ipynb_checkpoints/
+
+# LaTeX build artifacts
+report/*.aux
+report/*.log
+report/*.out
+report/*.pdf
+report/*.synctex.gz
