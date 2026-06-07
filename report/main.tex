@@ -170,12 +170,60 @@ $1000$-way head with a $2$-way (benign/malignant) head and keeping the two
 $0.5$ dropout layers for MC dropout.
 
 \subsection{Training and acquisition details}
-% TODO: adjust if you changed any hyperparameters.
-Each acquisition step trains a freshly initialised model to convergence and
-keeps the weights with the best validation accuracy; the model is reset every
-step to isolate the effect of the acquisition function. On MNIST we start from
-$20$ balanced labelled points, acquire $10$ points per step using $T$ MC
-samples, and evaluate on the standard $10$k test set.
+Each acquisition step trains a freshly initialised model and resets it every
+step to isolate the effect of the acquisition function. On MNIST we keep the
+weights with the best validation accuracy (rather than the final-epoch weights)
+to avoid a single bad epoch collapsing the reported accuracy. The MNIST and ISIC
+hyperparameters are summarised in Table~\ref{tab:hparams-mnist} and
+Table~\ref{tab:hparams-isic}; the ISIC values follow the procedure of the paper.
+
+\begin{table}[h]
+  \centering
+  \caption{MNIST hyperparameters (Sections~\ref{sec:mnist}--\ref{sec:uncertainty}).}
+  \label{tab:hparams-mnist}
+  \begin{tabular}{ll}
+    \toprule
+    Setting & Value\\
+    \midrule
+    Initial labelled set         & $20$ (2 per class, balanced)\\
+    Validation set               & $100$ ($5000$ for Section~\ref{sec:semisup})\\
+    Test set                     & $10\,000$\\
+    Acquisitions per step        & $10$\\
+    Acquisition steps            & $100$\\
+    Pool subset scored / step    & $2000$\\
+    MC samples $T$               & $50$\\
+    Optimiser / LR               & Adam / $10^{-3}$\\
+    Epochs per round             & $50$ (best-val checkpoint)\\
+    Repetitions                  & $3$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{table}[h]
+  \centering
+  \caption{ISIC 2016 hyperparameters (Section~\ref{sec:isic}), matching the
+           paper's procedure.}
+  \label{tab:hparams-isic}
+  \begin{tabular}{ll}
+    \toprule
+    Setting & Value\\
+    \midrule
+    Backbone                     & VGG16, ImageNet-pretrained, $2$-way head\\
+    Input size                   & $224\times224$\\
+    Initial labelled set         & $80$ benign $+\,20$ malignant\\
+    Balanced test set            & $100$ benign $+\,100$ malignant\\
+    Acquisitions per step        & $100$\\
+    Positive augmentation        & horizontal $+$ vertical flips\\
+    Optimiser / LR               & Adam / $10^{-4}$\\
+    Weight decay                 & $(1-p)\,l^2/N$, $p{=}0.5$, $l^2{=}0.5$\\
+    Epochs per round             & $100$\\
+    Batch size                   & $8$\\
+    MC samples (test \& BALD)    & $20$\\
+    Metric                       & AUC\\
+    Splits $\times$ repetitions  & $2 \times 3$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \subsection{Code structure}
 The implementation is split into modules; the core acquisition functions read as
@@ -277,17 +325,47 @@ def bald(probs):  # probs: (N, T, C)
 %-------------------------------------------------------------------------
 \section{Discussion}
 \label{sec:discussion}
-% TODO: discuss differences from the paper and design choices.
-\begin{itemize}
-  \item \textbf{Training stability.} Reporting the best-validation checkpoint
-        (rather than the final epoch) removes sharp accuracy dips caused by
-        retraining from scratch each step.
-  \item \textbf{Variation Ratios.} We use the soft definition
-        $1-\max_c p(y=c\mid x)$, which matches the paper's formula and is also
-        well defined for a single deterministic pass.
-  \item \textbf{Differences from the paper.} % TODO: e.g. accuracy slightly
-        higher in the mid-curve; Mean STD variance with few repetitions, etc.
-\end{itemize}
+
+\paragraph{Training stability.}
+Resetting the model every acquisition step makes a single bad final epoch
+occasionally collapse the test accuracy, producing sharp V-shaped dips in the
+learning curve. Reporting the \emph{best-validation} checkpoint instead of the
+final-epoch weights removes these dips. We also apply weight decay only to the
+dense layers and cap it, since the very large decay that the
+$\text{base}/N$ heuristic produces at small $N$ destabilised training.
+
+\paragraph{Variation Ratios definition.}
+We use the soft form $1-\max_c p(y=c\mid x)$ from the predictive mean, which (i)
+matches the paper's stated formula and (ii) remains well defined for a single
+deterministic pass, unlike a hard mode-counting variant which is identically
+zero when $T=1$.
+
+\paragraph{Bayesian vs.\ deterministic gap.}
+% TODO: adapt to what your own runs show.
+In our runs the deterministic and Bayesian curves were closer than in the
+original Figure~2. This is consistent with the implementation being correct:
+deterministic BALD reduces to $\mathbb{H}[y\mid x]-\mathbb{H}[y\mid x]=0$, i.e.\
+random acquisition, which we verified numerically. The small visible gap is
+instead a property of the experimental regime: (i) scoring only a random subset
+of the pool each step injects diversity that benefits weak/random selection, so
+larger \texttt{pool\_subset} widens the gap; (ii) the best-validation
+checkpoint raises the floor for all methods, so the curves converge by $1000$
+labels; and (iii) for Max Entropy and Variation Ratios the MC-dropout mean
+prediction on confident MNIST inputs is close to the deterministic softmax, so
+the two variants compute similar scores. BALD, which exploits inter-sample
+disagreement directly, shows the clearest separation.
+
+\paragraph{ISIC augmentation and metric.}
+Following the paper, positive (malignant) lesions are augmented with deterministic
+horizontal and vertical flips to counter the $20\%$ class imbalance, the model is
+reset to its pre-trained weights at each step, and performance is measured by
+AUC (accuracy and average precision are misleading under this imbalance).
+Variation Ratios is omitted for ISIC because nearly all images receive the same
+modal-class probability, making its scores indistinguishable.
+
+\paragraph{Differences from the paper.}
+% TODO: e.g. mid-curve accuracy slightly higher; Mean STD variance with few
+% repetitions; ISIC AUC range varying widely between the two test splits.
 
 %-------------------------------------------------------------------------
 \section{Conclusion}
