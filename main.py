@@ -1,6 +1,4 @@
 """Command-line entry point.
-
-Examples:
     python main.py --acquisition BALD
     python main.py --acquisition VAR_RATIOS --experiments 3 --steps 100
     python main.py --acquisition RANDOM --quick   # tiny run for a smoke test
